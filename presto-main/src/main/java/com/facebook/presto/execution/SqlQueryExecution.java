@@ -117,6 +117,7 @@ public class SqlQueryExecution
 
     public SqlQueryExecution(QueryId queryId,
             String query,
+            String queryAbridged,
             Session session,
             URI self,
             Statement statement,
@@ -162,7 +163,7 @@ public class SqlQueryExecution
             requireNonNull(query, "query is null");
             requireNonNull(session, "session is null");
             requireNonNull(self, "self is null");
-            this.stateMachine = QueryStateMachine.begin(queryId, query, session, self, false, transactionManager, accessControl, queryExecutor, metadata);
+            this.stateMachine = QueryStateMachine.begin(queryId, query, queryAbridged, session, self, false, transactionManager, accessControl, queryExecutor, metadata);
 
             // analyze query
             Analyzer analyzer = new Analyzer(stateMachine.getSession(), metadata, sqlParser, accessControl, Optional.of(queryExplainer), parameters);
@@ -664,7 +665,7 @@ public class SqlQueryExecution
         }
 
         @Override
-        public QueryExecution createQueryExecution(QueryId queryId, String query, Session session, Statement statement, List<Expression> parameters)
+        public QueryExecution createQueryExecution(QueryId queryId, String query, String queryAbridged, Session session, Statement statement, List<Expression> parameters)
         {
             String executionPolicyName = SystemSessionProperties.getExecutionPolicy(session);
             ExecutionPolicy executionPolicy = executionPolicies.get(executionPolicyName);
@@ -673,6 +674,7 @@ public class SqlQueryExecution
             SqlQueryExecution execution = new SqlQueryExecution(
                     queryId,
                     query,
+                    queryAbridged,
                     session,
                     locationFactory.createQueryLocation(queryId),
                     statement,

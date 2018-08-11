@@ -34,6 +34,7 @@ import com.facebook.presto.spi.resourceGroups.QueryType;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 import com.facebook.presto.spi.resourceGroups.SelectionContext;
 import com.facebook.presto.spi.resourceGroups.SelectionCriteria;
+import com.facebook.presto.sql.QueryAbbreviator;
 import com.facebook.presto.sql.SqlEnvironmentConfig;
 import com.facebook.presto.sql.SqlPath;
 import com.facebook.presto.sql.analyzer.SemanticException;
@@ -428,6 +429,9 @@ public class SqlQueryManager
             session = sessionSupplier.createSession(queryId, sessionContext, queryType, selectionContext.getResourceGroupId());
             Statement wrappedStatement = sqlParser.createStatement(query, createParsingOptions(session));
             statement = unwrapExecuteStatement(wrappedStatement, sqlParser, session);
+
+            String queryAbridged = getAbridgedVersion(query, session);
+
             List<Expression> parameters = wrappedStatement instanceof Execute ? ((Execute) wrappedStatement).getParameters() : emptyList();
             validateParameters(statement, parameters);
             QueryExecutionFactory<?> queryExecutionFactory = executionFactories.get(statement.getClass());
@@ -441,7 +445,7 @@ public class SqlQueryManager
                     throw new PrestoException(NOT_SUPPORTED, "EXPLAIN ANALYZE doesn't support statement type: " + innerStatement.getClass().getSimpleName());
                 }
             }
-            queryExecution = queryExecutionFactory.createQueryExecution(queryId, query, session, statement, parameters);
+            queryExecution = queryExecutionFactory.createQueryExecution(queryId, query, queryAbridged, session, statement, parameters);
         }
         catch (ParsingException | PrestoException | SemanticException e) {
             // This is intentionally not a method, since after the state change listener is registered
@@ -526,6 +530,14 @@ public class SqlQueryManager
 
         String sql = session.getPreparedStatementFromExecute((Execute) statement);
         return sqlParser.createStatement(sql, createParsingOptions(session));
+    }
+
+    public String getAbridgedVersion(String query, Session session)
+    {
+        Statement wrappedStatement = sqlParser.createStatement(query, createParsingOptions(session));
+        Statement statement = unwrapExecuteStatement(wrappedStatement, sqlParser, session);
+        List<Expression> parameters = wrappedStatement instanceof Execute ? ((Execute) wrappedStatement).getParameters() : emptyList();
+        return QueryAbbreviator.abbreviate(statement, Optional.of(parameters), 0);
     }
 
     public static void validateParameters(Statement node, List<Expression> parameterValues)

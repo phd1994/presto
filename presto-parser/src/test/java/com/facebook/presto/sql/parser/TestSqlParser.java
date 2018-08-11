@@ -13,6 +13,9 @@
  */
 package com.facebook.presto.sql.parser;
 
+import com.facebook.presto.sql.QueryAbbreviator;
+import com.facebook.presto.sql.SqlFormatter;
+import com.facebook.presto.sql.TreePrinter;
 import com.facebook.presto.sql.tree.AddColumn;
 import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.AllColumns;
@@ -130,6 +133,7 @@ import com.facebook.presto.sql.tree.With;
 import com.facebook.presto.sql.tree.WithQuery;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import javax.swing.text.html.Option;
 import org.testng.annotations.Test;
 
 import java.util.Arrays;
@@ -185,6 +189,18 @@ public class TestSqlParser
     public void testPossibleExponentialBacktracking()
     {
         SQL_PARSER.createExpression("(((((((((((((((((((((((((((true)))))))))))))))))))))))))))");
+    }
+
+    @Test
+    public void testSyntax()
+    {
+        //Statement statement = SQL_PARSER.createStatement("select a, sum(c) as d from b natural join c where d not in ('e','f','g') and h > 2 group by a order by sum(c)");
+        //Statement statement = SQL_PARSER.createStatement("Select a from b where c not in (z, (select d from e where f=g))");
+        Statement statement = SQL_PARSER.createStatement("select * from t, lateral (select * from y) a(x)");
+        String x = statement.toString();
+        String y = SqlFormatter.formatSql(statement, Optional.empty());
+        String z = SqlFormatter.formatSql(statement, Optional.empty());
+        String d = QueryAbbreviator.abbreviate(statement, Optional.empty(), 0);
     }
 
     @Test(timeOut = 2_000)

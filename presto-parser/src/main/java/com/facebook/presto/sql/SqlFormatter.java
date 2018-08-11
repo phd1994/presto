@@ -115,7 +115,7 @@ import static java.util.stream.Collectors.joining;
 
 public final class SqlFormatter
 {
-    private static final String INDENT = "   ";
+    private static final String INDENT = "    ";
     private static final Pattern NAME_PATTERN = Pattern.compile("[a-z_][a-z0-9_]*");
 
     private SqlFormatter() {}
@@ -123,7 +123,14 @@ public final class SqlFormatter
     public static String formatSql(Node root, Optional<List<Expression>> parameters)
     {
         StringBuilder builder = new StringBuilder();
-        new Formatter(builder, parameters).process(root, 0);
+        new PruneAwareFormatter(builder, parameters).process(root, 0);
+        return builder.toString();
+    }
+
+    public static String formatSql(Node root, Optional<List<Expression>> parameters, int indent)
+    {
+        StringBuilder builder = new StringBuilder();
+        new PruneAwareFormatter(builder, parameters).process(root, indent);
         return builder.toString();
     }
 
@@ -831,6 +838,7 @@ public final class SqlFormatter
                         throw new UnsupportedOperationException("unknown table element: " + element);
                     })
                     .collect(joining(",\n"));
+
             builder.append(columnList);
             builder.append("\n").append(")");
 
@@ -1157,16 +1165,44 @@ public final class SqlFormatter
             }
         }
 
-        private StringBuilder append(int indent, String value)
+        protected StringBuilder append(int indent, String value)
         {
             return builder.append(indentString(indent))
                     .append(value);
         }
 
-        private static String indentString(int indent)
+        protected static String indentString(int indent)
         {
             return Strings.repeat(INDENT, indent);
         }
+    }
+
+    private static class PruneAwareFormatter
+        extends Formatter
+    {
+        public PruneAwareFormatter(StringBuilder builder, Optional<List<Expression>> parameters)
+        {
+            super(builder, parameters);
+        }
+
+        @Override
+        public Void process(Node node, Integer indent)
+        {
+            if (node.isPruned())
+            {
+                // System.out.println("this node is pruned: " + node.getClass() + "--->" + node.toString());
+                append(indent,  node.getPruneReplacement());
+            }
+            else{
+                super.process(node, indent);
+            }
+            return null;
+        }
+    }
+
+    public static String applyIndent(int indent, String str)
+    {
+        return Formatter.indentString(indent) + str;
     }
 
     private static void appendAliasColumns(StringBuilder builder, List<Identifier> columns)

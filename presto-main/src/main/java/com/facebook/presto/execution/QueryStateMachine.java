@@ -96,6 +96,7 @@ public class QueryStateMachine
 
     private final QueryId queryId;
     private final String query;
+    private final String queryAbridged;
     private final Session session;
     private final URI self;
     private final boolean autoCommit;
@@ -157,10 +158,11 @@ public class QueryStateMachine
 
     private final AtomicReference<ResourceGroupId> resourceGroup = new AtomicReference<>();
 
-    private QueryStateMachine(QueryId queryId, String query, Session session, URI self, boolean autoCommit, TransactionManager transactionManager, Executor executor, Ticker ticker, Metadata metadata)
+    private QueryStateMachine(QueryId queryId, String query, String queryAbridged, Session session, URI self, boolean autoCommit, TransactionManager transactionManager, Executor executor, Ticker ticker, Metadata metadata)
     {
         this.queryId = requireNonNull(queryId, "queryId is null");
         this.query = requireNonNull(query, "query is null");
+        this.queryAbridged = requireNonNull(queryAbridged, "queryAbridged is null");
         this.session = requireNonNull(session, "session is null");
         this.self = requireNonNull(self, "self is null");
         this.autoCommit = autoCommit;
@@ -180,6 +182,7 @@ public class QueryStateMachine
     public static QueryStateMachine begin(
             QueryId queryId,
             String query,
+            String queryAbridged,
             Session session,
             URI self,
             boolean transactionControl,
@@ -188,12 +191,27 @@ public class QueryStateMachine
             Executor executor,
             Metadata metadata)
     {
-        return beginWithTicker(queryId, query, session, self, transactionControl, transactionManager, accessControl, executor, Ticker.systemTicker(), metadata);
+        return beginWithTicker(queryId, query, queryAbridged, session, self, transactionControl, transactionManager, accessControl, executor, Ticker.systemTicker(), metadata);
+    }
+
+    public static QueryStateMachine begin(
+            QueryId queryId,
+            String query,
+            Session session,
+            URI self,
+            boolean transactionControl,
+            TransactionManager transactionManager,
+            AccessControl accessControl,
+            Executor executor,
+            Metadata metadata)
+    {
+        return beginWithTicker(queryId, query, query, session, self, transactionControl, transactionManager, accessControl, executor, Ticker.systemTicker(), metadata);
     }
 
     static QueryStateMachine beginWithTicker(
             QueryId queryId,
             String query,
+            String queryAbridged,
             Session session,
             URI self,
             boolean transactionControl,
@@ -216,7 +234,7 @@ public class QueryStateMachine
             querySession = session;
         }
 
-        QueryStateMachine queryStateMachine = new QueryStateMachine(queryId, query, querySession, self, autoCommit, transactionManager, executor, ticker, metadata);
+        QueryStateMachine queryStateMachine = new QueryStateMachine(queryId, query, queryAbridged, querySession, self, autoCommit, transactionManager, executor, ticker, metadata);
         queryStateMachine.addStateChangeListener(newState -> {
             log.debug("Query %s is %s", queryId, newState);
             if (newState.isDone()) {
@@ -232,12 +250,13 @@ public class QueryStateMachine
      */
     public static QueryStateMachine failed(QueryId queryId, String query, Session session, URI self, TransactionManager transactionManager, Executor executor, Metadata metadata, Throwable throwable)
     {
-        return failedWithTicker(queryId, query, session, self, transactionManager, executor, Ticker.systemTicker(), metadata, throwable);
+        return failedWithTicker(queryId, query, "ABCDEFGH", session, self, transactionManager, executor, Ticker.systemTicker(), metadata, throwable);
     }
 
     static QueryStateMachine failedWithTicker(
             QueryId queryId,
             String query,
+            String queryAbridged,
             Session session,
             URI self,
             TransactionManager transactionManager,
@@ -246,7 +265,7 @@ public class QueryStateMachine
             Metadata metadata,
             Throwable throwable)
     {
-        QueryStateMachine queryStateMachine = new QueryStateMachine(queryId, query, session, self, false, transactionManager, executor, ticker, metadata);
+        QueryStateMachine queryStateMachine = new QueryStateMachine(queryId, query, queryAbridged, session, self, false, transactionManager, executor, ticker, metadata);
         queryStateMachine.transitionToFailed(throwable);
         return queryStateMachine;
     }
@@ -480,6 +499,7 @@ public class QueryStateMachine
                 self,
                 outputManager.getQueryOutputInfo().map(QueryOutputInfo::getColumnNames).orElse(ImmutableList.of()),
                 query,
+                queryAbridged,
                 queryStats,
                 Optional.ofNullable(setCatalog.get()),
                 Optional.ofNullable(setSchema.get()),
@@ -874,6 +894,7 @@ public class QueryStateMachine
                 queryInfo.getSelf(),
                 queryInfo.getFieldNames(),
                 queryInfo.getQuery(),
+                queryInfo.getQueryAbridged(),
                 pruneQueryStats(queryInfo.getQueryStats()),
                 queryInfo.getSetCatalog(),
                 queryInfo.getSetSchema(),

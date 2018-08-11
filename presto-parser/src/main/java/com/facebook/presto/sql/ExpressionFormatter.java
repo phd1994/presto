@@ -111,7 +111,7 @@ public final class ExpressionFormatter
 
     public static String formatExpression(Expression expression, Optional<List<Expression>> parameters)
     {
-        return new Formatter(parameters).process(expression, null);
+        return new FormatterPruneAware(parameters).process(expression, null);
     }
 
     public static String formatQualifiedName(QualifiedName name)
@@ -693,6 +693,26 @@ public final class ExpressionFormatter
             return Joiner.on(", ").join(expressions.stream()
                     .map((e) -> process(e, null))
                     .iterator());
+        }
+    }
+
+    public static class FormatterPruneAware
+        extends Formatter
+    {
+        public FormatterPruneAware(Optional<List<Expression>> parameters)
+        {
+            super(parameters);
+        }
+
+        @Override
+        public String process(Node node, Void context)
+        {
+            if (node.isPruned()) {
+                return node.getPruneReplacement();
+            }
+            else{
+                return super.process(node, context);
+            }
         }
     }
 
