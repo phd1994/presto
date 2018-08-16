@@ -192,15 +192,36 @@ public class TestSqlParser
     }
 
     @Test
+    public void testSqlFormatterCoverage()
+    {
+        SQL_PARSER.createStatement("");
+    }
+
+    @Test
     public void testSyntax()
     {
         //Statement statement = SQL_PARSER.createStatement("select a, sum(c) as d from b natural join c where d not in ('e','f','g') and h > 2 group by a order by sum(c)");
         //Statement statement = SQL_PARSER.createStatement("Select a from b where c not in (z, (select d from e where f=g))");
-        Statement statement = SQL_PARSER.createStatement("select * from t, lateral (select * from y) a(x)");
+        // Statement statement = SQL_PARSER.createStatement("Select a from b where c = d group by a order by b");
+        // Statement statement = SQL_PARSER.createStatement("select a, sum(c) as d from b natural join c where d not in ('e','f','g') and h > 2 group by a order by sum(c)");
+        Statement statement = SQL_PARSER.createStatement("(table foo)");
         String x = statement.toString();
         String y = SqlFormatter.formatSql(statement, Optional.empty());
         String z = SqlFormatter.formatSql(statement, Optional.empty());
-        String d = QueryAbbreviator.abbreviate(statement, Optional.empty(), 0);
+        String d = QueryAbbreviator.abbreviate(statement, Optional.empty(), 4);
+
+        StringBuilder queryBuilder = new StringBuilder().append("select foobar from barfoo where foofoo not in (");
+        for (int i = 0; i < 10000; i++)
+        {
+            queryBuilder.append("'abc', ");
+        }
+
+        queryBuilder.append(" 'abc')");
+        String queryString = queryBuilder.toString();
+
+        Statement statement2 = SQL_PARSER.createStatement(queryString, new ParsingOptions());
+        String abbreviation = QueryAbbreviator.abbreviate(statement2, Optional.empty(), 70);
+
     }
 
     @Test(timeOut = 2_000)

@@ -115,7 +115,7 @@ import static java.util.stream.Collectors.joining;
 
 public final class SqlFormatter
 {
-    private static final String INDENT = "    ";
+    private static final String INDENT = "   ";
     private static final Pattern NAME_PATTERN = Pattern.compile("[a-z_][a-z0-9_]*");
 
     private SqlFormatter() {}
@@ -838,7 +838,6 @@ public final class SqlFormatter
                         throw new UnsupportedOperationException("unknown table element: " + element);
                     })
                     .collect(joining(",\n"));
-
             builder.append(columnList);
             builder.append("\n").append(")");
 
@@ -1152,7 +1151,7 @@ public final class SqlFormatter
             return null;
         }
 
-        private void processRelation(Relation relation, Integer indent)
+        protected void processRelation(Relation relation, Integer indent)
         {
             // TODO: handle this properly
             if (relation instanceof Table) {
@@ -1171,7 +1170,7 @@ public final class SqlFormatter
                     .append(value);
         }
 
-        protected static String indentString(int indent)
+        private static String indentString(int indent)
         {
             return Strings.repeat(INDENT, indent);
         }
@@ -1197,6 +1196,24 @@ public final class SqlFormatter
                 super.process(node, indent);
             }
             return null;
+        }
+
+        @Override
+        protected Void visitExpression(Expression node, Integer indent)
+        {
+            append(0, formatExpression(node, Optional.empty()));
+            return null;
+        }
+
+        @Override
+        protected void processRelation(Relation relation, Integer indent)
+        {
+            if(relation.isPruned() && relation instanceof Table) {
+                append(indent,  relation.getPruneReplacement());
+            }
+            else{
+                super.processRelation(relation, indent);
+            }
         }
     }
 

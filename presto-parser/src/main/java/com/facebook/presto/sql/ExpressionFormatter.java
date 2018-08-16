@@ -111,7 +111,7 @@ public final class ExpressionFormatter
 
     public static String formatExpression(Expression expression, Optional<List<Expression>> parameters)
     {
-        return new FormatterPruneAware(parameters).process(expression, null);
+      return new PruneAwareFormatter(parameters).process(expression, null);
     }
 
     public static String formatQualifiedName(QualifiedName name)
@@ -696,10 +696,10 @@ public final class ExpressionFormatter
         }
     }
 
-    public static class FormatterPruneAware
+    public static class PruneAwareFormatter
         extends Formatter
     {
-        public FormatterPruneAware(Optional<List<Expression>> parameters)
+        public PruneAwareFormatter(Optional<List<Expression>> parameters)
         {
             super(parameters);
         }
