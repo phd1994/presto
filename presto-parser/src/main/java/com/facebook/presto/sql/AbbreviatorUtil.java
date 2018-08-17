@@ -9,6 +9,7 @@ import com.facebook.presto.sql.tree.Select;
 import com.facebook.presto.sql.tree.SelectItem;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.sql.tree.Table;
+import com.facebook.presto.sql.tree.TableSubquery;
 import com.facebook.presto.sql.tree.TransactionMode;
 import com.facebook.presto.sql.tree.Use;
 import java.util.ArrayList;
@@ -20,7 +21,9 @@ public class AbbreviatorUtil {
 
     private static List<Class> blackList = new ArrayList<>(Arrays.asList(
         Use.class,
-        Table.class
+        OrderBy.class,
+        Table.class,
+        TableSubquery.class
     ));
 
     private static List<Class> whiteList = new ArrayList<>(Arrays.asList(

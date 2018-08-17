@@ -19,10 +19,15 @@ import com.facebook.presto.sql.tree.Lateral;
 import com.facebook.presto.sql.tree.Node;
 
 import com.facebook.presto.sql.tree.Prepare;
+import com.facebook.presto.sql.tree.Query;
+import com.facebook.presto.sql.tree.QuerySpecification;
 import com.facebook.presto.sql.tree.TableSubquery;
+import com.facebook.presto.sql.tree.With;
+import com.facebook.presto.sql.tree.WithQuery;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -30,6 +35,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 
+import static com.facebook.presto.sql.ExpressionFormatter.*;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 import static com.facebook.presto.sql.AbbreviatorUtil.isAllowedToBePruned;
@@ -136,7 +142,7 @@ public final class QueryAbbreviator
         System.out.println("-----------------\nExpected size: " + currentSize);
         String queryNow = SqlFormatter.formatSql(root, Optional.empty());
         System.out.println("Actual size: " + queryNow.length());
-        System.out.println("-----------------\nQuery String now: " + queryNow);
+        System.out.println("-----------------\nQuery String now:" + queryNow);
     }
 
     /**
@@ -149,6 +155,7 @@ public final class QueryAbbreviator
     static int pruneOneNode(Queue<NodeInfo> pruningOrder)
     {
         NodeInfo nodeInfo = pruningOrder.remove();
+        System.out.println(nodeInfo.getNode().getClass());
         return prune(nodeInfo.getNode(), nodeInfo.getIndent());
     }
 
@@ -158,7 +165,7 @@ public final class QueryAbbreviator
         String currentNodeSql = SqlFormatter.formatSql(node, Optional.empty(), indent);
 
         // Formatted Sql after pruning
-        String prunedNodeSql = SqlFormatter.applyIndent(indent, PRUNED_MARKER);
+        String prunedNodeSql = SqlFormatter.applyIndent(0, PRUNED_MARKER);
 
         // Change in query length
         int changeInQueryLength = currentNodeSql.length() - prunedNodeSql.length();
@@ -224,6 +231,83 @@ public final class QueryAbbreviator
                 return indent + 1;
             }
             return indent;
+        }
+
+        @Override
+        protected Void visitQuery(Query node, PruningContext context)
+        {
+
+            int numChildren = node.getChildren().size();
+
+            double childPriority;
+            if(numChildren == 0) {
+                childPriority = context.getCurrentPriority();
+            }
+            else {
+                childPriority = context.getCurrentPriority() / numChildren;
+            }
+
+            // compute indent value for children
+            int childIndent = getChildIndent(context.getCurrentIndent(), node);
+
+            // Add NodeInfo object to the priority queue
+            NodeInfo nodeInfo = new NodeInfo(
+                node,
+                childPriority,
+                context.getCurrentLevel(),
+                context.getCurrentIndent()
+            );
+
+            if(isAllowedToBePruned(node)) {
+                context.getNonLeafNodesList().add(nodeInfo);
+            }
+
+            // Generate child context
+            PruningContext childContext = new PruningContext(
+                context.getNonLeafNodesList(),
+                childPriority,
+                context.getCurrentLevel() + 1,
+                childIndent
+            );
+
+            if (node.getWith().isPresent()) {
+                With with = node.getWith().get();
+                processWith(with, childContext);
+            }
+
+            List<Node> childrenExceptWith = new ArrayList<>();
+            childrenExceptWith.add(node.getQueryBody());
+
+            if (node.getOrderBy().isPresent()) {
+                childrenExceptWith.add(node.getOrderBy().get());
+            }
+
+            // Process children except With
+            for(Node child : childrenExceptWith) {
+                process(child, childContext);
+            }
+
+            return null;
+        }
+
+        private void processWith(With with, PruningContext context) {
+
+            Iterator<WithQuery> queries = with.getQueries().iterator();
+            int numWithQueries = with.getQueries().size();
+
+            double childPriority = context.getCurrentPriority() / Math.max(numWithQueries, 1);
+
+            int childIndent = getChildIndent(context.getCurrentIndent(), with);
+
+            PruningContext childContext = new PruningContext(context.getNonLeafNodesList(),
+                childPriority,
+                context.getCurrentLevel() + 1,
+                childIndent);
+
+            while (queries.hasNext()) {
+                WithQuery query = queries.next();
+                process(new TableSubquery(query.getQuery()), childContext);
+            }
         }
     }
 

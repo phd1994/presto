@@ -13,11 +13,16 @@ import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.sql.tree.StringLiteral;
 import com.facebook.presto.sql.tree.Table;
 
+import com.facebook.presto.sql.tree.TableSubquery;
+import com.facebook.presto.sql.tree.With;
+import com.facebook.presto.sql.tree.WithQuery;
 import com.google.common.collect.ImmutableList;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +31,7 @@ import java.util.Set;
 import org.testng.annotations.Test;
 
 import static com.facebook.presto.sql.AbbreviatorUtil.*;
+import static com.facebook.presto.sql.parser.ParsingOptions.DecimalLiteralTreatment.*;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.assertEquals;
 
@@ -38,7 +44,7 @@ public class TestQueryAbbreviator {
     {
         String query = "select foobar from barfoo where foofoo = barbar";
 
-        Statement root = SQL_PARSER.createStatement(query, new ParsingOptions());
+        Statement root = SQL_PARSER.createStatement(query, new ParsingOptions(AS_DOUBLE));
 
         String abbreviation_39 = QueryAbbreviator.abbreviate(root, Optional.empty(), 39);
         assertTrue(abbreviation_39.length() <= 39);
@@ -68,7 +74,7 @@ public class TestQueryAbbreviator {
         queryBuilder.append(" 'abc')");
         String queryString = queryBuilder.toString();
 
-        Statement statement = SQL_PARSER.createStatement(queryString, new ParsingOptions());
+        Statement statement = SQL_PARSER.createStatement(queryString, new ParsingOptions(AS_DOUBLE));
         String abbreviation = QueryAbbreviator.abbreviate(statement, Optional.empty(), 70);
 
         assertEquals(abbreviation, "SELECT foobar\n" + "FROM\n" + "  barfoo\n" + "WHERE (NOT (foofoo IN ...))\n");
@@ -80,7 +86,8 @@ public class TestQueryAbbreviator {
     {
           ImmutableList.Builder<String> queryBuilder = ImmutableList.builder();
 
-          queryBuilder.add("select foobar from barfoo where foofoo = barbar group by foobar order by foobar")
+          queryBuilder.add("create table foo as (with t(x) as (values 1) select x from t)")
+              .add("select foobar from barfoo where foofoo = barbar group by foobar order by foobar")
               .add("select a, sum(c) as d from b")
                 .add("select a, sum(c) as d from b natural join c where d not in ('e','f','g') and h > 2 group by a order by sum(c)")
                 .add("Select a from b where c not in (z, (select d from e where f=g))")
@@ -122,22 +129,22 @@ public class TestQueryAbbreviator {
               .add("select sum(x) filter (where x > 4) y, sum(x) filter (where x < 2) z from t")
               .add("select sum(distinct x) filter (where x > 4) y, sum(x) filter (where x < 2) z from t")
               .add("select sum(x) filter (where x > 4) over (partition by y) z from t")
-//              .add("" +
-//                  "select depname, empno, salary\n" +
-//                  ", count(*) over ()\n" +
-//                  ", avg(salary) over (partition by depname)\n" +
-//                  ", rank() over (partition by depname order by salary desc)\n" +
-//                  ", sum(salary) over (order by salary rows unbounded preceding)\n" +
-//                  ", sum(salary) over (partition by depname order by salary rows between current row and 3 following)\n" +
-//                  ", sum(salary) over (partition by depname range unbounded preceding)\n" +
-//                  ", sum(salary) over (rows between 2 preceding and unbounded following)\n" +
-//                  "from emp"
-//              )
-//              .add("" +
-//                  "with a (id) as (with x as (select 123 from z) select * from x) " +
-//                  "   , b (id) as (select 999 from z) " +
-//                  "select * from a join b using (id)")
-//              .add("with recursive t as (select * from x) select * from t")
+              .add("" +
+                  "select depname, empno, salary\n" +
+                  ", count(*) over ()\n" +
+                  ", avg(salary) over (partition by depname)\n" +
+                  ", rank() over (partition by depname order by salary desc)\n" +
+                  ", sum(salary) over (order by salary rows unbounded preceding)\n" +
+                  ", sum(salary) over (partition by depname order by salary rows between current row and 3 following)\n" +
+                  ", sum(salary) over (partition by depname range unbounded preceding)\n" +
+                  ", sum(salary) over (rows between 2 preceding and unbounded following)\n" +
+                  "from emp"
+              )
+              .add("" +
+                  "with a (id) as (with x as (select 123 from z) select * from x) " +
+                  "   , b (id) as (select 999 from z) " +
+                  "select * from a join b using (id)")
+              .add("with recursive t as (select * from x) select * from t")
               .add("select * from information_schema.tables")
               .add("show catalogs")
               .add("show schemas")
@@ -182,7 +189,7 @@ public class TestQueryAbbreviator {
               .add("insert into foo select * from abc")
               .add("delete from foo")
               .add("delete from foo where a = b")
-              //.add("values ('a', 1, 2.2), ('b', 2, 3.3)")
+              .add("values ('a', 1, 2.2), ('b', 2, 3.3)")
               .add("table foo")
               .add("table foo order by x limit 10")
               .add("(table foo)")
@@ -221,8 +228,8 @@ public class TestQueryAbbreviator {
               .add("create table test (a boolean, b bigint) with (a = 'apple', b = 'banana')")
               .add("create table test (a boolean, b bigint) comment 'test' with (a = 'apple')")
               .add("drop table test")
-              //.add("create view foo as with a as (select 123) select * from a")
-              //.add("create or replace view foo as select 123 from t")
+              .add("create view foo as with a as (select 123) select * from a")
+              .add("create or replace view foo as select 123 from t")
               .add("drop view foo")
               .add("insert into t select * from t")
               .add("insert into t (c1, c2) select * from t")
@@ -263,11 +270,18 @@ public class TestQueryAbbreviator {
           }
     }
 
+    @Test
+    public void testbed()
+    {
+        String query = "create table foo as (with t(x) as (values 1) select x from t)";
+        testPriorityAssigner(SQL_PARSER.createStatement(query, new ParsingOptions(AS_DOUBLE)));
+    }
+
 
     public void testAbbreviationLogic(String query)
     {
         System.out.println(query);
-        Statement root = SQL_PARSER.createStatement(query, new ParsingOptions());
+        Statement root = SQL_PARSER.createStatement(query, new ParsingOptions(AS_DOUBLE));
         testPriorityAssigner(root);
         testPruning(query);
     }
@@ -281,7 +295,7 @@ public class TestQueryAbbreviator {
     @Test
     public void testPruning(String query)
     {
-        Statement root = SQL_PARSER.createStatement(query, new ParsingOptions());
+        Statement root = SQL_PARSER.createStatement(query, new ParsingOptions(AS_DOUBLE));
 
         // Generate a queue of candidates to prune
         Queue<QueryAbbreviator.NodeInfo> pruneOrder = QueryAbbreviator.generatePruningOrder(root);
@@ -343,16 +357,45 @@ public class TestQueryAbbreviator {
         if(nodeInfoMap.containsKey(node)) {
 
             QueryAbbreviator.NodeInfo nodeInfo = nodeInfoMap.get(node);
-            System.out.println((node) + ", " + node.getClass() + ", child priority: " + nodeInfo.getChildPriorityVal() + ", level: " + nodeInfo.getLevel());
+            //System.out.println((node) + ", " + node.getClass() + ", child priority: " + nodeInfo.getChildPriorityVal() + ", level: " + nodeInfo.getLevel());
             assertEquals(nodeInfo.getLevel(), expectedLevel);
             assertEquals(nodeInfo.getChildPriorityVal(), expectedPriority / Math.max(node.getChildren().size(),1));
         }
 
+        if(node instanceof Query) {
+            handleQuery((Query) node, nodeInfoMap, expectedLevel, expectedPriority);
+        }
+        else {
+            int childLevel = expectedLevel + 1;
+            double childPriority = expectedPriority / Math.max(node.getChildren().size(), 1);
+
+            for (Node child : node.getChildren()) {
+                verifyPriorityRecursive(child, nodeInfoMap, childLevel, childPriority);
+            }
+        }
+    }
+
+    private void handleQuery(Query node, Map<Node,QueryAbbreviator.NodeInfo> nodeInfoMap, int expectedLevel, double expectedPriority)
+    {
         int childLevel = expectedLevel + 1;
         double childPriority = expectedPriority / Math.max(node.getChildren().size(),1);
 
-        for(Node child : node.getChildren()) {
-            verifyPriorityRecursive(child, nodeInfoMap, childLevel, childPriority);
+        if (node.getWith().isPresent()) {
+
+            With with = node.getWith().get();
+            Iterator<WithQuery> queries = with.getQueries().iterator();
+
+            int withQueryLevel = childLevel + 1;
+            double withQueryPriority = childPriority / Math.max(with.getQueries().size(), 1);
+            while (queries.hasNext()) {
+                WithQuery query = queries.next();
+                verifyPriorityRecursive(new TableSubquery(query.getQuery()), nodeInfoMap, withQueryLevel, withQueryPriority);
+            }
+        }
+
+        verifyPriorityRecursive(node.getQueryBody(), nodeInfoMap, childLevel, childPriority);
+        if (node.getOrderBy().isPresent()) {
+            verifyPriorityRecursive(node.getOrderBy().get(), nodeInfoMap, childLevel, childPriority);
         }
     }
 

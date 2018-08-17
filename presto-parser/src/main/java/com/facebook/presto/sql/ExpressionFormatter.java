@@ -109,9 +109,14 @@ public final class ExpressionFormatter
 
     private ExpressionFormatter() {}
 
+    public static String formatExpression(Expression expression, Optional<List<Expression>> parameters, int indent)
+    {
+      return new PruneAwareFormatter(parameters, indent).process(expression, null);
+    }
+
     public static String formatExpression(Expression expression, Optional<List<Expression>> parameters)
     {
-      return new PruneAwareFormatter(parameters).process(expression, null);
+        return new PruneAwareFormatter(parameters).process(expression, null);
     }
 
     public static String formatQualifiedName(QualifiedName name)
@@ -130,10 +135,18 @@ public final class ExpressionFormatter
             extends AstVisitor<String, Void>
     {
         private final Optional<List<Expression>> parameters;
+        private final int indentFromSqlFormatter;
+
+        public Formatter(Optional<List<Expression>> parameters, int indentFromSqlFormatter)
+        {
+            this.parameters = parameters;
+            this.indentFromSqlFormatter = indentFromSqlFormatter;
+        }
 
         public Formatter(Optional<List<Expression>> parameters)
         {
             this.parameters = parameters;
+            this.indentFromSqlFormatter = 0;
         }
 
         @Override
@@ -238,7 +251,7 @@ public final class ExpressionFormatter
         {
             ImmutableList.Builder<String> valueStrings = ImmutableList.builder();
             for (Expression value : node.getValues()) {
-                valueStrings.add(formatSql(value, parameters));
+                valueStrings.add(formatSql(value, parameters, indentFromSqlFormatter));
             }
             return "ARRAY[" + Joiner.on(",").join(valueStrings.build()) + "]";
         }
@@ -246,7 +259,8 @@ public final class ExpressionFormatter
         @Override
         protected String visitSubscriptExpression(SubscriptExpression node, Void context)
         {
-            return formatSql(node.getBase(), parameters) + "[" + formatSql(node.getIndex(), parameters) + "]";
+            return formatSql(node.getBase(), parameters, indentFromSqlFormatter) + "[" + formatSql(node.getIndex(), parameters,
+                indentFromSqlFormatter) + "]";
         }
 
         @Override
@@ -311,13 +325,13 @@ public final class ExpressionFormatter
         @Override
         protected String visitSubqueryExpression(SubqueryExpression node, Void context)
         {
-            return "(" + formatSql(node.getQuery(), parameters) + ")";
+            return "(" + formatSql(node.getQuery(), parameters, indentFromSqlFormatter) + ")";
         }
 
         @Override
         protected String visitExists(ExistsPredicate node, Void context)
         {
-            return "(EXISTS " + formatSql(node.getSubquery(), parameters) + ")";
+            return "(EXISTS " + formatSql(node.getSubquery(), parameters, indentFromSqlFormatter) + ")";
         }
 
         @Override
@@ -699,6 +713,11 @@ public final class ExpressionFormatter
     public static class PruneAwareFormatter
         extends Formatter
     {
+        public PruneAwareFormatter(Optional<List<Expression>> parameters, int indent)
+        {
+            super(parameters, indent);
+        }
+
         public PruneAwareFormatter(Optional<List<Expression>> parameters)
         {
             super(parameters);
