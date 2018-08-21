@@ -125,6 +125,8 @@ public class SqlQueryManager
     private final int maxQueryHistory;
     private final Duration minQueryExpireAge;
     private final int maxQueryLength;
+    private final boolean queryAbridgingEnabled;
+    private final int queryAbridgedMaxLength;
     private final int initializationRequiredWorkers;
     private final Duration initializationTimeout;
     private final long initialNanos;
@@ -204,6 +206,8 @@ public class SqlQueryManager
         this.clientTimeout = queryManagerConfig.getClientTimeout();
         this.maxQueryLength = queryManagerConfig.getMaxQueryLength();
         this.maxQueryCpuTime = queryManagerConfig.getQueryMaxCpuTime();
+        this.queryAbridgingEnabled = queryManagerConfig.isQueryAbridgingEnabled();
+        this.queryAbridgedMaxLength = queryManagerConfig.getQueryAbridgedMaxLength();
         this.initializationRequiredWorkers = queryManagerConfig.getInitializationRequiredWorkers();
         this.initializationTimeout = queryManagerConfig.getInitializationTimeout();
         this.initialNanos = System.nanoTime();
@@ -397,6 +401,7 @@ public class SqlQueryManager
         SelectionContext<?> selectionContext;
         QueryExecution queryExecution;
         Statement statement;
+        String queryAbridged = query;
         try {
             if (!acceptQueries.get()) {
                 int activeWorkerCount = internalNodeManager.getNodes(ACTIVE).size();
@@ -430,7 +435,9 @@ public class SqlQueryManager
             Statement wrappedStatement = sqlParser.createStatement(query, createParsingOptions(session));
             statement = unwrapExecuteStatement(wrappedStatement, sqlParser, session);
 
-            String queryAbridged = getAbridgedVersion(query, session);
+            if (queryAbridgingEnabled) {
+                queryAbridged = getAbridgedVersion(query, wrappedStatement, session);
+            }
 
             List<Expression> parameters = wrappedStatement instanceof Execute ? ((Execute) wrappedStatement).getParameters() : emptyList();
             validateParameters(statement, parameters);
@@ -460,9 +467,17 @@ public class SqlQueryManager
                         .setPath(new SqlPath(Optional.empty()))
                         .build();
             }
+
+            if (queryAbridgingEnabled) {
+                if (queryAbridged.length() > queryAbridgedMaxLength) {
+                    queryAbridged = queryAbridged.substring(0, queryAbridgedMaxLength);
+                }
+            }
+
             QueryExecution execution = new FailedQueryExecution(
                     queryId,
                     query,
+                    queryAbridged,
                     Optional.empty(),
                     session,
                     self,
@@ -522,6 +537,14 @@ public class SqlQueryManager
         return StatementUtils.getQueryType(statement.getClass()).map(Enum::name);
     }
 
+    public static String wrapExecuteQueryString(String abbreviatedQuery, Statement statement)
+    {
+        if ((!(statement instanceof Execute))) {
+            return abbreviatedQuery;
+        }
+        return "EXECUTE Statement: " + abbreviatedQuery;
+    }
+
     public static Statement unwrapExecuteStatement(Statement statement, SqlParser sqlParser, Session session)
     {
         if ((!(statement instanceof Execute))) {
@@ -532,12 +555,12 @@ public class SqlQueryManager
         return sqlParser.createStatement(sql, createParsingOptions(session));
     }
 
-    public String getAbridgedVersion(String query, Session session)
+    public String getAbridgedVersion(String query, Statement wrappedStatement, Session session)
     {
-        Statement wrappedStatement = sqlParser.createStatement(query, createParsingOptions(session));
         Statement statement = unwrapExecuteStatement(wrappedStatement, sqlParser, session);
         List<Expression> parameters = wrappedStatement instanceof Execute ? ((Execute) wrappedStatement).getParameters() : emptyList();
-        return QueryAbbreviator.abbreviate(statement, Optional.of(parameters), 0);
+        String abbreviatedQuery = QueryAbbreviator.abbreviate(query, statement, Optional.of(parameters), queryAbridgedMaxLength);
+        return wrapExecuteQueryString(abbreviatedQuery, wrappedStatement);
     }
 
     public static void validateParameters(Statement node, List<Expression> parameterValues)

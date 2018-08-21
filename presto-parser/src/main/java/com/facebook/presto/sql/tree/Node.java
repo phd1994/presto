@@ -52,7 +52,7 @@ public abstract class Node
     @Override
     public abstract String toString();
 
-    private boolean pruned = false;
+    private boolean pruned;
     private String pruneReplacement = "";
 
     public void setPruned(String replacement)
@@ -70,6 +70,4 @@ public abstract class Node
     {
         return pruneReplacement;
     }
-
-
 }

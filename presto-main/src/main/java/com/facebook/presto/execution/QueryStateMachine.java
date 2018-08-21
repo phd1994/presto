@@ -248,9 +248,9 @@ public class QueryStateMachine
     /**
      * Create a QueryStateMachine that is already in a failed state.
      */
-    public static QueryStateMachine failed(QueryId queryId, String query, Session session, URI self, TransactionManager transactionManager, Executor executor, Metadata metadata, Throwable throwable)
+    public static QueryStateMachine failed(QueryId queryId, String query, String queryAbridged, Session session, URI self, TransactionManager transactionManager, Executor executor, Metadata metadata, Throwable throwable)
     {
-        return failedWithTicker(queryId, query, "ABCDEFGH", session, self, transactionManager, executor, Ticker.systemTicker(), metadata, throwable);
+        return failedWithTicker(queryId, query, queryAbridged, session, self, transactionManager, executor, Ticker.systemTicker(), metadata, throwable);
     }
 
     static QueryStateMachine failedWithTicker(

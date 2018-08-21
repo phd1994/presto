@@ -13,9 +13,6 @@
  */
 package com.facebook.presto.sql.parser;
 
-import com.facebook.presto.sql.QueryAbbreviator;
-import com.facebook.presto.sql.SqlFormatter;
-import com.facebook.presto.sql.TreePrinter;
 import com.facebook.presto.sql.tree.AddColumn;
 import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.AllColumns;
@@ -133,7 +130,6 @@ import com.facebook.presto.sql.tree.With;
 import com.facebook.presto.sql.tree.WithQuery;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import javax.swing.text.html.Option;
 import org.testng.annotations.Test;
 
 import java.util.Arrays;
@@ -189,49 +185,6 @@ public class TestSqlParser
     public void testPossibleExponentialBacktracking()
     {
         SQL_PARSER.createExpression("(((((((((((((((((((((((((((true)))))))))))))))))))))))))))");
-    }
-
-    @Test
-    public void testSqlFormatterCoverage()
-    {
-        SQL_PARSER.createStatement("");
-    }
-
-    @Test
-    public void testSyntax()
-    {
-        //Statement statement = SQL_PARSER.createStatement("select a, sum(c) as d from b natural join c where d not in ('e','f','g') and h > 2 group by a order by sum(c)");
-        //Statement statement = SQL_PARSER.createStatement("Select recruiter_name from recruiter_info where recruiter_city not in ('san fransisco', (select city from cities where country=us))");
-        // Statement statement = SQL_PARSER.createStatement("Select a from b where c = d group by a order by b");
-        // Statement statement = SQL_PARSER.createStatement("select a, sum(c) as d from b natural join c where d not in ('e','f','g') and h > 2 group by a order by sum(c)");
-        // Statement statement = SQL_PARSER.createStatement("select abcd from defg where exists (select * from hijk)", new ParsingOptions());
-         //Statement statement = SQL_PARSER.createStatement("select * from abcd, LATERAL (" +  "SELECT name\n" + "FROM nation\n"
-         //    + "WHERE EXISTS (SELECT * FROM region) ) a(x)");
-        //Statement statement = SQL_PARSER.createStatement("(table foo) union select * from foo union (table foo order by x)", new ParsingOptions());
-        //Statement statement = SQL_PARSER.createStatement("create table foo as (with t(x) as (values 1) select 1)", new ParsingOptions(ParsingOptions.DecimalLiteralTreatment.AS_DOUBLE));
-//        Statement statement = SQL_PARSER.createStatement("values ('a', 1, 2.2), ('b', 2, 3.3)", new ParsingOptions(ParsingOptions.DecimalLiteralTreatment.AS_DOUBLE));
-        //Statement statement = SQL_PARSER.createStatement("" +
-        //    "select depname, empno, salary\n" +
-        //    ", sum(salary) over (partition by depname order by salary rows between current row and 3 following)\n" +
-        //    "from emp", new ParsingOptions(ParsingOptions.DecimalLiteralTreatment.AS_DOUBLE));
-        Statement statement = SQL_PARSER.createStatement("create table foo as (with t(x) as (values 1) select x from t)", new ParsingOptions(ParsingOptions.DecimalLiteralTreatment.AS_DOUBLE));
-        //        String x = statement.toString();
-//        String y = SqlFormatter.formatSql(statement, Optional.empty());
-//        String z = SqlFormatter.formatSql(statement, Optional.empty());
-        String d = QueryAbbreviator.abbreviate(statement, Optional.empty(), 4);
-
-//        StringBuilder queryBuilder = new StringBuilder().append("select foobar from barfoo where foofoo not in (");
-//        for (int i = 0; i < 10000; i++)
-//        {
-//            queryBuilder.append("'abc', ");
-//        }
-//
-//        queryBuilder.append(" 'abc')");
-//        String queryString = queryBuilder.toString();
-//
-//        Statement statement2 = SQL_PARSER.createStatement(queryString, new ParsingOptions());
-//        String abbreviation = QueryAbbreviator.abbreviate(statement2, Optional.empty(), 70);
-
     }
 
     @Test(timeOut = 2_000)

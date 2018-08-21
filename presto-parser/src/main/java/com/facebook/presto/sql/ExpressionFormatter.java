@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql;
 
+import com.facebook.presto.sql.SqlFormatter.SqlFormatterType;
 import com.facebook.presto.sql.tree.AllColumns;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
@@ -95,6 +96,8 @@ import java.util.PrimitiveIterator;
 import java.util.Set;
 import java.util.function.Function;
 
+import static com.facebook.presto.sql.SqlFormatter.SqlFormatterType.DEFAULT;
+import static com.facebook.presto.sql.SqlFormatter.SqlFormatterType.PRUNE_AWARE;
 import static com.facebook.presto.sql.SqlFormatter.formatSql;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.getOnlyElement;
@@ -109,21 +112,37 @@ public final class ExpressionFormatter
 
     private ExpressionFormatter() {}
 
-    public static String formatExpression(Expression expression, Optional<List<Expression>> parameters, int indent)
-    {
-      return new PruneAwareFormatter(parameters, indent).process(expression, null);
-    }
-
     public static String formatExpression(Expression expression, Optional<List<Expression>> parameters)
     {
-        return new PruneAwareFormatter(parameters).process(expression, null);
+        return formatExpression(expression, parameters, 0, DEFAULT);
+    }
+
+    public static String formatExpression(Expression expression, Optional<List<Expression>> parameters, int sqlFormatterIndent)
+    {
+        return formatExpression(expression, parameters, sqlFormatterIndent, DEFAULT);
+    }
+
+    public static String formatExpression(Expression expression, Optional<List<Expression>> parameters, SqlFormatterType sqlFormatterType)
+    {
+        return formatExpression(expression, parameters, 0, sqlFormatterType);
+    }
+
+    public static String formatExpression(Expression expression, Optional<List<Expression>> parameters, int sqlFormatterIndent, SqlFormatterType sqlFormatterType)
+    {
+        if (sqlFormatterType.equals(DEFAULT)) {
+            return new Formatter(parameters, sqlFormatterIndent).process(expression, null);
+        }
+        else if (sqlFormatterType.equals(PRUNE_AWARE)) {
+            return new PruneAwareFormatter(parameters, sqlFormatterIndent).process(expression, null);
+        }
+        throw new UnsupportedOperationException("Formatter not yet implemented");
     }
 
     public static String formatQualifiedName(QualifiedName name)
     {
         return name.getParts().stream()
-                .map(ExpressionFormatter::formatIdentifier)
-                .collect(joining("."));
+            .map(ExpressionFormatter::formatIdentifier)
+            .collect(joining("."));
     }
 
     public static String formatIdentifier(String s)
@@ -159,8 +178,8 @@ public final class ExpressionFormatter
         protected String visitRow(Row node, Void context)
         {
             return "ROW (" + Joiner.on(", ").join(node.getItems().stream()
-                    .map((child) -> process(child, context))
-                    .collect(toList())) + ")";
+                .map((child) -> process(child, context))
+                .collect(toList())) + ")";
         }
 
         @Override
@@ -173,9 +192,9 @@ public final class ExpressionFormatter
         protected String visitAtTimeZone(AtTimeZone node, Void context)
         {
             return new StringBuilder()
-                    .append(process(node.getValue(), context))
-                    .append(" AT TIME ZONE ")
-                    .append(process(node.getTimeZone(), context)).toString();
+                .append(process(node.getValue(), context))
+                .append(" AT TIME ZONE ")
+                .append(process(node.getTimeZone(), context)).toString();
         }
 
         @Override
@@ -199,8 +218,8 @@ public final class ExpressionFormatter
 
             if (node.getPrecision() != null) {
                 builder.append('(')
-                        .append(node.getPrecision())
-                        .append(')');
+                    .append(node.getPrecision())
+                    .append(')');
             }
 
             return builder.toString();
@@ -251,7 +270,7 @@ public final class ExpressionFormatter
         {
             ImmutableList.Builder<String> valueStrings = ImmutableList.builder();
             for (Expression value : node.getValues()) {
-                valueStrings.add(formatSql(value, parameters, indentFromSqlFormatter));
+                valueStrings.add(processFormatSql(value, parameters, indentFromSqlFormatter));
             }
             return "ARRAY[" + Joiner.on(",").join(valueStrings.build()) + "]";
         }
@@ -259,7 +278,7 @@ public final class ExpressionFormatter
         @Override
         protected String visitSubscriptExpression(SubscriptExpression node, Void context)
         {
-            return formatSql(node.getBase(), parameters, indentFromSqlFormatter) + "[" + formatSql(node.getIndex(), parameters,
+            return processFormatSql(node.getBase(), parameters, indentFromSqlFormatter) + "[" + processFormatSql(node.getIndex(), parameters,
                 indentFromSqlFormatter) + "]";
         }
 
@@ -311,10 +330,10 @@ public final class ExpressionFormatter
         {
             String sign = (node.getSign() == IntervalLiteral.Sign.NEGATIVE) ? "- " : "";
             StringBuilder builder = new StringBuilder()
-                    .append("INTERVAL ")
-                    .append(sign)
-                    .append(" '").append(node.getValue()).append("' ")
-                    .append(node.getStartField());
+                        .append("INTERVAL ")
+                        .append(sign)
+                        .append(" '").append(node.getValue()).append("' ")
+                        .append(node.getStartField());
 
             if (node.getEndField().isPresent()) {
                 builder.append(" TO ").append(node.getEndField().get());
@@ -325,13 +344,13 @@ public final class ExpressionFormatter
         @Override
         protected String visitSubqueryExpression(SubqueryExpression node, Void context)
         {
-            return "(" + formatSql(node.getQuery(), parameters, indentFromSqlFormatter) + ")";
+            return "(" + processFormatSql(node.getQuery(), parameters, indentFromSqlFormatter) + ")";
         }
 
         @Override
         protected String visitExists(ExistsPredicate node, Void context)
         {
-            return "(EXISTS " + formatSql(node.getSubquery(), parameters, indentFromSqlFormatter) + ")";
+            return "(EXISTS " + processFormatSql(node.getSubquery(), parameters, indentFromSqlFormatter) + ")";
         }
 
         @Override
@@ -385,10 +404,10 @@ public final class ExpressionFormatter
             }
 
             builder.append(formatQualifiedName(node.getName()))
-                    .append('(').append(arguments);
+                .append('(').append(arguments);
 
             if (node.getOrderBy().isPresent()) {
-                builder.append(' ').append(formatOrderBy(node.getOrderBy().get(), parameters));
+                builder.append(' ').append(processFormatOrderBy(node.getOrderBy().get(), parameters, indentFromSqlFormatter));
             }
 
             builder.append(')');
@@ -470,12 +489,12 @@ public final class ExpressionFormatter
         {
             StringBuilder builder = new StringBuilder();
             builder.append("IF(")
-                    .append(process(node.getCondition(), context))
-                    .append(", ")
-                    .append(process(node.getTrueValue(), context));
+                .append(process(node.getCondition(), context))
+                .append(", ")
+                .append(process(node.getTrueValue(), context));
             if (node.getFalseValue().isPresent()) {
                 builder.append(", ")
-                        .append(process(node.getFalseValue().get(), context));
+                    .append(process(node.getFalseValue().get(), context));
             }
             builder.append(")");
             return builder.toString();
@@ -522,13 +541,13 @@ public final class ExpressionFormatter
             StringBuilder builder = new StringBuilder();
 
             builder.append('(')
-                    .append(process(node.getValue(), context))
-                    .append(" LIKE ")
-                    .append(process(node.getPattern(), context));
+                .append(process(node.getValue(), context))
+                .append(" LIKE ")
+                .append(process(node.getPattern(), context));
 
             node.getEscape().ifPresent(escape -> {
                 builder.append(" ESCAPE ")
-                        .append(process(escape, context));
+                    .append(process(escape, context));
             });
 
             builder.append(')');
@@ -550,7 +569,7 @@ public final class ExpressionFormatter
         public String visitCast(Cast node, Void context)
         {
             return (node.isSafe() ? "TRY_CAST" : "CAST") +
-                    "(" + process(node.getExpression(), context) + " AS " + node.getType() + ")";
+                "(" + process(node.getExpression(), context) + " AS " + node.getType() + ")";
         }
 
         @Override
@@ -563,7 +582,7 @@ public final class ExpressionFormatter
             }
 
             node.getDefaultValue()
-                    .ifPresent((value) -> parts.add("ELSE").add(process(value, context)));
+                .ifPresent((value) -> parts.add("ELSE").add(process(value, context)));
 
             parts.add("END");
 
@@ -576,14 +595,14 @@ public final class ExpressionFormatter
             ImmutableList.Builder<String> parts = ImmutableList.builder();
 
             parts.add("CASE")
-                    .add(process(node.getOperand(), context));
+                .add(process(node.getOperand(), context));
 
             for (WhenClause whenClause : node.getWhenClauses()) {
                 parts.add(process(whenClause, context));
             }
 
             node.getDefaultValue()
-                    .ifPresent((value) -> parts.add("ELSE").add(process(value, context)));
+                .ifPresent((value) -> parts.add("ELSE").add(process(value, context)));
 
             parts.add("END");
 
@@ -600,7 +619,7 @@ public final class ExpressionFormatter
         protected String visitBetweenPredicate(BetweenPredicate node, Void context)
         {
             return "(" + process(node.getValue(), context) + " BETWEEN " +
-                    process(node.getMin(), context) + " AND " + process(node.getMax(), context) + ")";
+                process(node.getMin(), context) + " AND " + process(node.getMax(), context) + ")";
         }
 
         @Override
@@ -629,7 +648,7 @@ public final class ExpressionFormatter
                 parts.add("PARTITION BY " + joinExpressions(node.getPartitionBy()));
             }
             if (node.getOrderBy().isPresent()) {
-                parts.add(formatOrderBy(node.getOrderBy().get(), parameters));
+                parts.add(processFormatOrderBy(node.getOrderBy().get(), parameters, indentFromSqlFormatter));
             }
             if (node.getFrame().isPresent()) {
                 parts.add(process(node.getFrame().get(), context));
@@ -647,9 +666,9 @@ public final class ExpressionFormatter
 
             if (node.getEnd().isPresent()) {
                 builder.append("BETWEEN ")
-                        .append(process(node.getStart(), context))
-                        .append(" AND ")
-                        .append(process(node.getEnd().get(), context));
+                    .append(process(node.getStart(), context))
+                    .append(" AND ")
+                    .append(process(node.getEnd().get(), context));
             }
             else {
                 builder.append(process(node.getStart(), context));
@@ -680,16 +699,16 @@ public final class ExpressionFormatter
         protected String visitQuantifiedComparisonExpression(QuantifiedComparisonExpression node, Void context)
         {
             return new StringBuilder()
-                    .append("(")
-                    .append(process(node.getValue(), context))
-                    .append(' ')
-                    .append(node.getOperator().getValue())
-                    .append(' ')
-                    .append(node.getQuantifier().toString())
-                    .append(' ')
-                    .append(process(node.getSubquery(), context))
-                    .append(")")
-                    .toString();
+                .append("(")
+                .append(process(node.getValue(), context))
+                .append(' ')
+                .append(node.getOperator().getValue())
+                .append(' ')
+                .append(node.getQuantifier().toString())
+                .append(' ')
+                .append(process(node.getSubquery(), context))
+                .append(")")
+                .toString();
         }
 
         public String visitGroupingOperation(GroupingOperation node, Void context)
@@ -705,13 +724,23 @@ public final class ExpressionFormatter
         private String joinExpressions(List<Expression> expressions)
         {
             return Joiner.on(", ").join(expressions.stream()
-                    .map((e) -> process(e, null))
-                    .iterator());
+                .map((e) -> process(e, null))
+                .iterator());
+        }
+
+        protected String processFormatSql(Node node, Optional<List<Expression>> parameters, int indentFromSqlFormatter)
+        {
+            return formatSql(node, parameters, indentFromSqlFormatter);
+        }
+
+        protected String processFormatOrderBy(OrderBy orderBy, Optional<List<Expression>> parameters, int indent)
+        {
+            return formatOrderBy(orderBy, parameters, indent, DEFAULT);
         }
     }
 
     public static class PruneAwareFormatter
-        extends Formatter
+            extends Formatter
     {
         public PruneAwareFormatter(Optional<List<Expression>> parameters, int indent)
         {
@@ -729,9 +758,21 @@ public final class ExpressionFormatter
             if (node.isPruned()) {
                 return node.getPruneReplacement();
             }
-            else{
+            else {
                 return super.process(node, context);
             }
+        }
+
+        @Override
+        protected String processFormatSql(Node node, Optional<List<Expression>> parameters, int indentFromSqlFormatter)
+        {
+            return formatSql(node, parameters, indentFromSqlFormatter, PRUNE_AWARE);
+        }
+
+        @Override
+        protected String processFormatOrderBy(OrderBy orderBy, Optional<List<Expression>> parameters, int indent)
+        {
+            return formatOrderBy(orderBy, parameters, indent, PRUNE_AWARE);
         }
     }
 
@@ -768,24 +809,24 @@ public final class ExpressionFormatter
         return builder.toString();
     }
 
-    static String formatOrderBy(OrderBy orderBy, Optional<List<Expression>> parameters)
+    static String formatOrderBy(OrderBy orderBy, Optional<List<Expression>> parameters, int indent, SqlFormatterType sqlFormatterType)
     {
-        return "ORDER BY " + formatSortItems(orderBy.getSortItems(), parameters);
+        return "ORDER BY " + formatSortItems(orderBy.getSortItems(), parameters, indent, sqlFormatterType);
     }
 
-    static String formatSortItems(List<SortItem> sortItems, Optional<List<Expression>> parameters)
+    static String formatSortItems(List<SortItem> sortItems, Optional<List<Expression>> parameters, int indent, SqlFormatterType sqlFormatterType)
     {
         return Joiner.on(", ").join(sortItems.stream()
-                .map(sortItemFormatterFunction(parameters))
-                .iterator());
+            .map(sortItemFormatterFunction(parameters, indent, sqlFormatterType))
+            .iterator());
     }
 
-    static String formatGroupBy(List<GroupingElement> groupingElements)
+    static String formatGroupBy(List<GroupingElement> groupingElements, int indent, SqlFormatterType sqlFormatterType)
     {
-        return formatGroupBy(groupingElements, Optional.empty());
+        return formatGroupBy(groupingElements, Optional.empty(), indent, sqlFormatterType);
     }
 
-    static String formatGroupBy(List<GroupingElement> groupingElements, Optional<List<Expression>> parameters)
+    static String formatGroupBy(List<GroupingElement> groupingElements, Optional<List<Expression>> parameters, int indent, SqlFormatterType sqlFormatterType)
     {
         ImmutableList.Builder<String> resultStrings = ImmutableList.builder();
 
@@ -794,17 +835,17 @@ public final class ExpressionFormatter
             if (groupingElement instanceof SimpleGroupBy) {
                 Set<Expression> columns = ImmutableSet.copyOf(((SimpleGroupBy) groupingElement).getColumnExpressions());
                 if (columns.size() == 1) {
-                    result = formatExpression(getOnlyElement(columns), parameters);
+                    result = formatExpression(getOnlyElement(columns), parameters, indent, sqlFormatterType);
                 }
                 else {
-                    result = formatGroupingSet(columns, parameters);
+                    result = formatGroupingSet(columns, parameters, indent, sqlFormatterType);
                 }
             }
             else if (groupingElement instanceof GroupingSets) {
                 result = format("GROUPING SETS (%s)", Joiner.on(", ").join(
-                        ((GroupingSets) groupingElement).getSets().stream()
-                                .map(ExpressionFormatter::formatGroupingSet)
-                                .iterator()));
+                    ((GroupingSets) groupingElement).getSets().stream()
+                        .map(ExpressionFormatter::formatGroupingSet)
+                        .iterator()));
             }
             else if (groupingElement instanceof Cube) {
                 result = format("CUBE %s", formatGroupingSet(((Cube) groupingElement).getColumns()));
@@ -825,11 +866,11 @@ public final class ExpressionFormatter
         return true;
     }
 
-    private static String formatGroupingSet(Set<Expression> groupingSet, Optional<List<Expression>> parameters)
+    private static String formatGroupingSet(Set<Expression> groupingSet, Optional<List<Expression>> parameters, int indent, SqlFormatterType sqlFormatterType)
     {
         return format("(%s)", Joiner.on(", ").join(groupingSet.stream()
-                .map(e -> formatExpression(e, parameters))
-                .iterator()));
+            .map(e -> formatExpression(e, parameters, indent, sqlFormatterType))
+            .iterator()));
     }
 
     private static String formatGroupingSet(List<QualifiedName> groupingSet)
@@ -837,12 +878,12 @@ public final class ExpressionFormatter
         return format("(%s)", Joiner.on(", ").join(groupingSet));
     }
 
-    private static Function<SortItem, String> sortItemFormatterFunction(Optional<List<Expression>> parameters)
+    private static Function<SortItem, String> sortItemFormatterFunction(Optional<List<Expression>> parameters, int indent, SqlFormatterType sqlFormatterType)
     {
         return input -> {
             StringBuilder builder = new StringBuilder();
 
-            builder.append(formatExpression(input.getSortKey(), parameters));
+            builder.append(formatExpression(input.getSortKey(), parameters, indent, sqlFormatterType));
 
             switch (input.getOrdering()) {
                 case ASCENDING:
