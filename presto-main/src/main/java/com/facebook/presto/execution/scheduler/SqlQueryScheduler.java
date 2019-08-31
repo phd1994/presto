@@ -444,6 +444,9 @@ public class SqlQueryScheduler
             Set<StageId> completedStages = new HashSet<>();
             ExecutionSchedule executionSchedule = executionPolicy.createExecutionSchedule(stages.values());
             while (!executionSchedule.isFinished()) {
+                // This sleep statement is not to produce or prevent any race. It is just there to stop empty cpu cycles
+                // when executionSchedule#getStagesToSchedule returns empty.
+                SECONDS.sleep(1);
                 List<ListenableFuture<?>> blockedStages = new ArrayList<>();
                 for (SqlStageExecution stage : executionSchedule.getStagesToSchedule()) {
                     stage.beginScheduling();
@@ -508,6 +511,10 @@ public class SqlQueryScheduler
                     throw new PrestoException(GENERIC_INTERNAL_ERROR, format("Scheduling is complete, but stage %s is in state %s", stage.getStageId(), state));
                 }
             }
+        }
+        catch (InterruptedException e) {
+            queryStateMachine.transitionToFailed(e);
+            throw new RuntimeException(e);
         }
         catch (Throwable t) {
             queryStateMachine.transitionToFailed(t);

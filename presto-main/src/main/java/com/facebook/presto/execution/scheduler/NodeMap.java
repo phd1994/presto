@@ -15,6 +15,8 @@ package com.facebook.presto.execution.scheduler;
 
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.Node;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.SetMultimap;
 
 import java.net.InetAddress;
@@ -36,6 +38,14 @@ public class NodeMap
         this.nodesByHost = nodesByHost;
         this.workersByNetworkPath = workersByNetworkPath;
         this.coordinatorNodeIds = coordinatorNodeIds;
+    }
+
+    public NodeMap(NodeMap other)
+    {
+        this.nodesByHostAndPort = ImmutableSetMultimap.copyOf(other.nodesByHostAndPort);
+        this.nodesByHost = ImmutableSetMultimap.copyOf(other.nodesByHost);
+        this.workersByNetworkPath = ImmutableSetMultimap.copyOf(other.workersByNetworkPath);
+        this.coordinatorNodeIds = ImmutableSet.copyOf(other.coordinatorNodeIds);
     }
 
     public SetMultimap<HostAddress, Node> getNodesByHostAndPort()

@@ -22,7 +22,6 @@ import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.Node;
 import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.google.common.base.Supplier;
-import com.google.common.base.Suppliers;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -46,7 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static com.facebook.presto.execution.scheduler.NodeSchedulerConfig.NetworkTopologyType;
 import static com.facebook.presto.spi.NodeState.ACTIVE;
@@ -69,11 +67,17 @@ public class NodeScheduler
     private final int maxPendingSplitsPerTask;
     private final NodeTaskMap nodeTaskMap;
     private final boolean useNetworkTopology;
+    private final NodeMapSupplierProvider nodeMapSupplierProvider;
 
     @Inject
+    public NodeScheduler(NetworkTopology networkTopology, InternalNodeManager nodeManager, NodeSchedulerConfig config, NodeTaskMap nodeTaskMap, NodeMapSupplierProvider nodeMapSupplierProvider)
+    {
+        this(new NetworkLocationCache(networkTopology), networkTopology, nodeManager, config, nodeTaskMap, nodeMapSupplierProvider);
+    }
+
     public NodeScheduler(NetworkTopology networkTopology, InternalNodeManager nodeManager, NodeSchedulerConfig config, NodeTaskMap nodeTaskMap)
     {
-        this(new NetworkLocationCache(networkTopology), networkTopology, nodeManager, config, nodeTaskMap);
+        this(new NetworkLocationCache(networkTopology), networkTopology, nodeManager, config, nodeTaskMap, new RefreshingNodeMapSupplierProvider());
     }
 
     public NodeScheduler(
@@ -81,7 +85,8 @@ public class NodeScheduler
             NetworkTopology networkTopology,
             InternalNodeManager nodeManager,
             NodeSchedulerConfig config,
-            NodeTaskMap nodeTaskMap)
+            NodeTaskMap nodeTaskMap,
+            NodeMapSupplierProvider nodeMapSupplierProvider)
     {
         this.networkLocationCache = networkLocationCache;
         this.nodeManager = nodeManager;
@@ -104,6 +109,7 @@ public class NodeScheduler
             networkLocationSegmentNames = ImmutableList.of();
         }
         topologicalSplitCounters = builder.build();
+        this.nodeMapSupplierProvider = nodeMapSupplierProvider;
     }
 
     @PreDestroy
@@ -125,7 +131,7 @@ public class NodeScheduler
     {
         // this supplier is thread-safe. TODO: this logic should probably move to the scheduler since the choice of which node to run in should be
         // done as close to when the the split is about to be scheduled
-        Supplier<NodeMap> nodeMap = Suppliers.memoizeWithExpiration(() -> {
+        Supplier<NodeMap> nodeMap = nodeMapSupplierProvider.getNodeMapSupplier(() -> {
             ImmutableSetMultimap.Builder<HostAddress, Node> byHostAndPort = ImmutableSetMultimap.builder();
             ImmutableSetMultimap.Builder<InetAddress, Node> byHost = ImmutableSetMultimap.builder();
             ImmutableSetMultimap.Builder<NetworkLocation, Node> workersByNetworkPath = ImmutableSetMultimap.builder();
@@ -161,7 +167,7 @@ public class NodeScheduler
             }
 
             return new NodeMap(byHostAndPort.build(), byHost.build(), workersByNetworkPath.build(), coordinatorNodeIds);
-        }, 5, TimeUnit.SECONDS);
+        });
 
         if (useNetworkTopology) {
             return new TopologyAwareNodeSelector(

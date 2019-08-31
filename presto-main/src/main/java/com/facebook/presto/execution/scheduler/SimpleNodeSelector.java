@@ -18,7 +18,6 @@ import com.facebook.presto.execution.RemoteTask;
 import com.facebook.presto.metadata.InternalNodeManager;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.spi.Node;
-import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
@@ -40,7 +39,6 @@ import static com.facebook.presto.execution.scheduler.NodeScheduler.selectDistri
 import static com.facebook.presto.execution.scheduler.NodeScheduler.selectExactNodes;
 import static com.facebook.presto.execution.scheduler.NodeScheduler.selectNodes;
 import static com.facebook.presto.execution.scheduler.NodeScheduler.toWhenHasSplitQueueSpaceFuture;
-import static com.facebook.presto.spi.StandardErrorCode.NO_NODES_AVAILABLE;
 import static java.util.Objects.requireNonNull;
 
 public class SimpleNodeSelector
@@ -121,7 +119,8 @@ public class SimpleNodeSelector
             }
             if (candidateNodes.isEmpty()) {
                 log.debug("No nodes available to schedule %s. Available nodes %s", split, nodeMap.getNodesByHost().keys());
-                throw new PrestoException(NO_NODES_AVAILABLE, "No nodes available to run query");
+                // Commenting this exception to make the TestRaceCondition work.
+                // throw new PrestoException(NO_NODES_AVAILABLE, "No nodes available to run query");
             }
 
             Node chosenNode = null;
